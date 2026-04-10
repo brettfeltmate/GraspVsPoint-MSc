@@ -42,8 +42,8 @@ saccadic_motion_threshold = 0.15
 # Experiment Structure
 #########################################
 multi_session_project = False
-trials_per_block = 0
-blocks_per_experiment = 1
+trials_per_block = 40
+blocks_per_experiment = 6
 conditions = []
 default_condition = None
 
@@ -68,12 +68,14 @@ append_hostname = False
 #########################################
 # PROJECT-SPECIFIC VARS
 #########################################
-task_order = ['GBYK', 'KBYG']
-trials_per_practice_block = 24
+task_order = ['gbyk', 'kbyg']
+hand_order = ['right', 'left']
+action_order = ['point', 'grasp']
+trials_per_practice_block = 10
 
 cm_diam = 6
 cm_brim = 1
-cm_placeholder_offset = 25
+cm_placeholder_offset = 20
 cm_handstand_offset = 40
 cm_wiggle_room = 5
 cm_reach_start_threshold = (10, 15, 1)   # min, max, step
@@ -82,10 +84,6 @@ ms_go_signal_onset_interval = (100, 1600, 200)  # min, max, step
 ms_window_to_react = 500
 ms_window_to_reach = 500
 ms_post_reach_window = 500
-
-reach_speed_reveal_threshold = 20
-reach_accel_reveal_threshold = 1000
-reach_speed_
 
 # audio
 tone_duration = 100
@@ -100,4 +98,4 @@ plato_open_cmd = b'55'
 plato_close_cmd = b'56'
 arduino_comport = 'COM6'
 baudrate = 9600
-hand_marker_setname = 'right'
+hand_marker_setnames = ['right', 'left']

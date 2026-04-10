@@ -1,7 +1,15 @@
 import os
 import numpy as np
+import sqlite3
 from scipy.signal import butter, sosfiltfilt
-from typing import Optional
+
+
+# from klibs.KLDatabase import KLDatabase as kld
+
+# TODO:
+# grab first frame, row count indicates num markers tracked.
+# incorporate checks to ensure frames queried match expected marker count
+# refactor nomeclature about frame indexing/querying
 
 
 class OptiTracker(object):
@@ -10,8 +18,7 @@ class OptiTracker(object):
 
     This class processes positional data from markers, providing functionality
     to calculate velocities and positions in 3D space. It handles data loading,
-    frame querying, and various spatial calculations. By default, all calculations
-    use smoothed data via a dual-pass Butterworth filter to reduce noise.
+    frame querying, and various spatial calculations.
 
     Attributes:
         marker_count (int): Number of markers to track
@@ -20,15 +27,9 @@ class OptiTracker(object):
         data_dir (str): Directory path containing the tracking data files
 
     Methods:
-        velocity(num_frames, smooth=True): Calculate velocity based on marker positions across specified number of frames
-        position(smooth=True): Get current position of markers
-        distance(num_frames, smooth=True): Calculate distance traveled over specified number of frames
-        acceleration(num_frames, smooth=True): Calculate acceleration based on velocity changes
-        accelerating(num_frames, smooth=True): Determine if the current movement is accelerating
-        decelerating(num_frames, smooth=True): Determine if the current movement is decelerating
-
-    Note:
-        All methods default to using smoothed data. Set smooth=False to use raw data.
+        velocity(num_frames): Calculate velocity based on marker positions across specified number of frames
+        position(): Get current position of markers
+        distance(num_frames: int): Calculate distance traveled over specified number of frames
     """
 
     def __init__(
@@ -36,7 +37,8 @@ class OptiTracker(object):
         marker_count: int,
         sample_rate: int = 120,
         window_size: int = 5,
-        data_dir: str = "",
+        data_dir: str = '',
+        db_name: str = 'optitracker.db',
     ):
         """
         Initialize the OptiTracker object.
@@ -54,6 +56,30 @@ class OptiTracker(object):
         self.__sample_rate = sample_rate
         self.__data_dir = data_dir
         self.__window_size = window_size
+        # self.db = self.__connect(db_name)
+
+        # self.cursor = self.db.cursor()
+
+        db_scheme = """
+        CREATE TABLE IF NOT EXISTS frames (
+            frame_number INTEGER PRIMARY KEY,
+            pos_x REAL,
+            pos_y REAL,
+            pos_z REAL
+        )
+        """
+
+        # self.cursor.execute(db_scheme)
+
+    # @property
+    # def database(self) -> str:
+    #     """Get the name of the database file."""
+    #     return self.__database
+    #
+    # @database.setter
+    # def database(self, database: str) -> None:
+    #     """Set the name of the database file."""
+    #     self.__database = database
 
     @property
     def marker_count(self) -> int:
@@ -95,178 +121,57 @@ class OptiTracker(object):
         """Set the window size."""
         self.__window_size = window_size
 
-    def __validate_args(
-        self, num_frames: int, min_frames: int = 1, threshold: Optional[float] = None
-    ) -> int:
-        """
-        Validate and normalize common method arguments.
-
-        Args:
-            num_frames (int): Number of frames to validate (0 means use window_size)
-            min_frames (int, optional): Minimum required frames. Defaults to 1.
-            threshold (float, optional): Threshold value to validate if provided. Defaults to None.
-
-        Returns:
-            int: Normalized num_frames value (converts 0 to window_size)
-
-        Raises:
-            ValueError: If validation fails
-        """
-        # Normalize num_frames (0 means use window_size)
+    def velocity(self, num_frames: int = 0) -> float:
+        """Calculate and return the current velocity."""
         if num_frames == 0:
             num_frames = self.__window_size
 
-        # Validate num_frames is not negative
-        if num_frames < 0:
-            raise ValueError("Number of frames cannot be negative.")
+        if num_frames < 2:
+            raise ValueError('Window size must cover at least two frames.')
 
-        # Validate minimum frame requirement
-        if num_frames < min_frames:
-            if min_frames == 2:
-                raise ValueError("Window size must cover at least two frames.")
-            elif min_frames == 3:
-                raise ValueError("Window size must cover at least three frames.")
-            else:
-                raise ValueError(
-                    f"Window size must cover at least {min_frames} frames."
-                )
-
-        # Validate threshold if provided
-        if threshold is not None and threshold < 0:
-            raise ValueError("Threshold cannot be negative.")
-
-        return num_frames
-
-    def velocity(self, num_frames: int = 0, smooth: bool = True) -> float:
-        """Calculate and return the current velocity.
-
-        Args:
-            num_frames (int, optional): Number of frames to use for calculation. Defaults to window_size.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
-        """
-        num_frames = self.__validate_args(num_frames, min_frames=2)
         frames = self.__query_frames(num_frames)
-        return self.__velocity(frames, smooth=smooth)
+        return self.__velocity(frames)
 
-    def position(self, smooth: bool = True) -> np.ndarray:
-        """Get the current position of markers.
-
-        Args:
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
-        """
+    def position(self) -> np.ndarray:
+        """Get the current position of markers."""
         frame = self.__query_frames(num_frames=1)
-        return self.__column_means(smooth=smooth, frames=frame)
+        return self.__column_means(smooth=False, frames=frame)
 
-    def distance(self, num_frames: int = 0, smooth: bool = True) -> float:
-        """Calculate and return the distance traveled over the specified number of frames.
+    def distance(self, num_frames: int = 0) -> float:
+        """Calculate and return the distance traveled over the specified number of frames."""
 
-        Args:
-            num_frames (int, optional): Number of frames to use for calculation. Defaults to window_size.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
-        """
-        num_frames = self.__validate_args(num_frames)
+        if num_frames == 0:
+            num_frames = self.__window_size
+
         frames = self.__query_frames(num_frames)
-        return self.__euclidean_distance(frames, smooth=smooth)
+        return self.__euclidean_distance(frames)
 
-    def acceleration(self, num_frames: int = 0, smooth: bool = True) -> float:
-        """Calculate and return the current acceleration.
-
-        Args:
-            num_frames (int, optional): Number of frames to use for calculation. Defaults to window_size.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
-        """
-        num_frames = self.__validate_args(num_frames, min_frames=3)
-        frames = self.__query_frames(num_frames)
-        return self.__acceleration(frames, smooth=smooth)
-
-    def accelerating(
-        self, num_frames: int = 0, threshold: int = 10, smooth: bool = True
-    ) -> bool:
-        """Determine if the current movement is accelerating, defined as having an acceleration greater than the specified threshold.
-
-        Args:
-            num_frames (int, optional): Number of frames to use for calculation. Defaults to window_size.
-            threshold (int, optional): Acceleration threshold in cm/s^2 to determine if accelerating. Defaults to 10.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
-        """
-        num_frames = self.__validate_args(num_frames, min_frames=3, threshold=threshold)
-        frames = self.__query_frames(num_frames)
-        return self.__acceleration(frames, smooth=smooth) > threshold
-
-    def decelerating(self, num_frames: int = 0, smooth: bool = True) -> bool:
-        """Determine if the current movement is decelerating (negative acceleration).
-
-        Args:
-            num_frames (int, optional): Number of frames to use for calculation. Defaults to window_size.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
-
-        Returns:
-            bool: True if acceleration is negative (decelerating), False otherwise.
-        """
-        num_frames = self.__validate_args(num_frames, min_frames=3)
-        frames = self.__query_frames(num_frames)
-        return self.__acceleration(frames, smooth=smooth) < 0
-
-    def __acceleration(
-        self, frames: np.ndarray = np.array([]), smooth: bool = True
-    ) -> float:
-        """
-        Calculate acceleration using velocity data over the specified window.
-
-        Args:
-            frames (np.ndarray, optional): Array of frame data; queries last window_size frames if empty.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
-
-        Returns:
-            float: Calculated acceleration in cm/s^2
-        """
-        if self.__window_size < 3:
-            raise ValueError("Window size must cover at least three frames.")
-
-        if len(frames) == 0:
-            frames = self.__query_frames()
-
-        velocity_start = self.__velocity(
-            frames[: self.__window_size // 2], smooth=smooth
-        )
-        velocity_end = self.__velocity(frames[self.__window_size // 2 :], smooth=smooth)
-
-        return (velocity_end - velocity_start) / (
-            (self.__window_size / 2) / self.__sample_rate
-        )
-
-    def __velocity(
-        self, frames: np.ndarray = np.array([]), smooth: bool = True
-    ) -> float:
+    def __velocity(self, frames: np.ndarray = np.array([])) -> float:
         """
         Calculate velocity using position data over the specified window.
 
         Args:
             frames (np.ndarray, optional): Array of frame data; queries last window_size frames if empty.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
 
         Returns:
             float: Calculated velocity in cm/s
         """
         if self.__window_size < 2:
-            raise ValueError("Window size must cover at least two frames.")
+            raise ValueError('Window size must cover at least two frames.')
 
         if len(frames) == 0:
             frames = self.__query_frames()
 
-        euclidean_distance = self.__euclidean_distance(frames, smooth=smooth)
+        euclidean_distance = self.__euclidean_distance(frames)
 
         return euclidean_distance / (self.__window_size / self.__sample_rate)
 
-    def __euclidean_distance(
-        self, frames: np.ndarray = np.array([]), smooth: bool = True
-    ) -> float:
+    def __euclidean_distance(self, frames: np.ndarray = np.array([])) -> float:
         """
         Calculate Euclidean distance between first and last frames.
 
         Args:
             frames (np.ndarray, optional): Array of frame data; queries last window_size frames if empty.
-            smooth (bool, optional): Whether to apply smoothing to the data. Defaults to True.
 
         Returns:
             float: Euclidean distance
@@ -275,21 +180,30 @@ class OptiTracker(object):
         if frames.size == 0:
             frames = self.__query_frames()
 
-        positions = self.__column_means(smooth=smooth, frames=frames)
+        positions = self.__column_means(smooth=True, frames=frames)
+
+        # print("[__euclidean_distance()]")
+        # print("Frames queried:")
+        # pprint(frames)
+        # print("Calculated postion:")
+        # pprint(positions)
 
         return float(
             np.sqrt(
-                (positions["pos_x"][-1] - positions["pos_x"][0]) ** 2
-                + (positions["pos_y"][-1] - positions["pos_y"][0]) ** 2
-                + (positions["pos_z"][-1] - positions["pos_z"][0]) ** 2
+                (positions['pos_x'][-1] - positions['pos_x'][0]) ** 2
+                + (positions['pos_y'][-1] - positions['pos_y'][0]) ** 2
+                + (positions['pos_z'][-1] - positions['pos_z'][0]) ** 2
             )
         )
 
+    # TODO: reduce dependencies by hand-rolling a butterworth filter
+    # TODO: but first make sure this isn't a bad idea.
+
     def __smooth(
         self,
-        order=4,
-        cutoff=6,
-        filtype="low",
+        order=2,
+        cutoff=10,
+        filtype='low',
         frames: np.ndarray = np.array([]),
     ) -> np.ndarray:
         """
@@ -311,10 +225,10 @@ class OptiTracker(object):
         smooth = np.zeros(
             len(frames),
             dtype=[
-                ("frame_number", "i8"),
-                ("pos_x", "i8"),
-                ("pos_y", "i8"),
-                ("pos_z", "i8"),
+                ('frame_number', 'i8'),
+                ('pos_x', 'i8'),
+                ('pos_y', 'i8'),
+                ('pos_z', 'i8'),
             ],
         )
 
@@ -322,13 +236,17 @@ class OptiTracker(object):
             N=order,
             Wn=cutoff,
             btype=filtype,
-            output="sos",
+            output='sos',
             fs=self.__sample_rate,
         )
 
-        smooth["pos_x"] = sosfiltfilt(sos=butt, x=frames["pos_x"])
-        smooth["pos_y"] = sosfiltfilt(sos=butt, x=frames["pos_y"])
-        smooth["pos_z"] = sosfiltfilt(sos=butt, x=frames["pos_z"])
+        # print("[__smooth()]")
+        # print("frames:")
+        # pprint(frames)
+
+        smooth['pos_x'] = sosfiltfilt(sos=butt, x=frames['pos_x'])
+        smooth['pos_y'] = sosfiltfilt(sos=butt, x=frames['pos_y'])
+        smooth['pos_z'] = sosfiltfilt(sos=butt, x=frames['pos_z'])
 
         return smooth
 
@@ -339,42 +257,64 @@ class OptiTracker(object):
         Calculate column means of position data.
 
         Args:
-            smooth (bool, optional): Whether to apply smoothing before calculating means. Defaults to True.
             frames (np.ndarray, optional): Array of frame data; queries last window_size frames if empty.
 
         Returns:
             np.ndarray: Array of mean positions
+
+        Note:
+            Currently applies smoothing function to generate means.
+            This may (and should) be done on raw data within __query_frames instead.
         """
         if len(frames) == 0:
             frames = self.__query_frames()
+
+        # print("OptiTracker column_means, got frames:")
+        # pprint(frames)
 
         # Create output array with the correct dtype
         means = np.zeros(
             len(frames) // self.__marker_count,
             dtype=[
-                ("frame_number", "i8"),
-                ("pos_x", "i8"),
-                ("pos_y", "i8"),
-                ("pos_z", "i8"),
+                ('frame_number', 'i8'),
+                ('pos_x', 'i8'),
+                ('pos_y', 'i8'),
+                ('pos_z', 'i8'),
             ],
         )
 
         # Group by marker (every nth row where n is marker_count)
-        start = min(frames["frame_number"])
-        stop = max(frames["frame_number"]) + 1
+        start = min(frames['frame_number'])
+        stop = max(frames['frame_number']) + 1
 
         for frame_number in range(start, stop):
-            this_frame = frames[frames["frame_number"] == frame_number,]
+            this_frame = frames[
+                frames['frame_number'] == frame_number,
+            ]
+
+            # print("OptiTracker column_means, this frame:")
+            # pprint(this_frame)
+
+            # if not len(frame):
+            #     tmp = frame_number - 1
+            #     while not len(frame) and tmp >= start:
+            #         frame = frames[frames["frame_number"] == tmp,]
+            #         tmp -= 1
 
             idx = frame_number - start
-            means[idx]["frame_number"] = frame_number
-            means[idx]["pos_x"] = np.mean(this_frame["pos_x"])
-            means[idx]["pos_y"] = np.mean(this_frame["pos_y"])
-            means[idx]["pos_z"] = np.mean(this_frame["pos_z"])
+            means[idx]['pos_x'] = np.mean(this_frame['pos_x'])
+            means[idx]['pos_y'] = np.mean(this_frame['pos_y'])
+            means[idx]['pos_z'] = np.mean(this_frame['pos_z'])
 
-        # Apply smoothing if requested
-        if smooth:
-            means = self.__smooth(frames=means)
+            idx += 1
+
+            # except RuntimeWarning as e:
+            #     means[idx]["pos_x"] = 0.0
+            #     means[idx]["pos_y"] = 0.0
+            #     means[idx]["pos_z"] = 0.0
+
+        # if smooth:
+        #     means = self.__smooth(frames=means)
 
         return means
 
@@ -393,23 +333,26 @@ class OptiTracker(object):
             FileNotFoundError: If data directory does not exist
         """
 
-        if self.__data_dir == "":
-            raise ValueError("No data directory was set.")
+        if self.__data_dir == '':
+            raise ValueError('No data directory was set.')
 
         if not os.path.exists(self.__data_dir):
-            raise FileNotFoundError(f"Data directory not found at:\n{self.__data_dir}")
+            raise FileNotFoundError(
+                f'Data directory not found at:\n{self.__data_dir}'
+            )
 
         if num_frames < 0:
-            raise ValueError("Number of frames cannot be negative.")
+            raise ValueError('Number of frames cannot be negative.')
 
-        with open(self.__data_dir, "r") as file:
-            header = file.readline().strip().split(",")
+        with open(self.__data_dir, 'r') as file:
+            header = file.readline().strip().split(',')
 
         if any(
-            col not in header for col in ["frame_number", "pos_x", "pos_y", "pos_z"]
+            col not in header
+            for col in ['frame_number', 'pos_x', 'pos_y', 'pos_z']
         ):
             raise ValueError(
-                "Data file must contain columns named frame_number, pos_x, pos_y, pos_z."
+                'Data file must contain columns named frame_number, pos_x, pos_y, pos_z.'
             )
 
         dtype_map = [
@@ -417,11 +360,11 @@ class OptiTracker(object):
             (
                 name,
                 (
-                    "float"
-                    if name in ["pos_x", "pos_y", "pos_z"]
-                    else "int"
-                    if name == "frame_number"
-                    else "U32"
+                    'float'
+                    if name in ['pos_x', 'pos_y', 'pos_z']
+                    else 'int'
+                    if name == 'frame_number'
+                    else 'U32'
                 ),
             )
             for name in header
@@ -429,10 +372,10 @@ class OptiTracker(object):
 
         # read in data now that columns have been validated and typed
         data = np.genfromtxt(
-            self.__data_dir, delimiter=",", dtype=dtype_map, skip_header=1
+            self.__data_dir, delimiter=',', dtype=dtype_map, skip_header=1
         )
 
-        for col in ["pos_x", "pos_y", "pos_z"]:
+        for col in ['pos_x', 'pos_y', 'pos_z']:
             # rescale from mm to cm
             data[col] = np.rint(data[col] * 100).astype(np.int32)
 
@@ -440,10 +383,19 @@ class OptiTracker(object):
             num_frames = self.__window_size
 
         # Calculate which frames to include
-        last_frame = data["frame_number"][-1]
+        last_frame = data['frame_number'][-1]
         lookback = last_frame - num_frames
 
         # Filter for relevant frames
-        data = data[data["frame_number"] > lookback]
+        data = data[data['frame_number'] > lookback]
 
         return data
+
+    def __connect(self, db_name: str = 'optitracker.db') -> sqlite3.Connection:
+        """
+        Connect to the SQLite database.
+
+        Returns:
+            sqlite3.Connection: Connection object
+        """
+        return sqlite3.connect(db_name)
