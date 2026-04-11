@@ -62,7 +62,7 @@ primary_table = 'trials'
 unique_identifier = 'userhash'
 exclude_data_cols = ['created']
 append_info_cols = ['random_seed']
-datafile_ext = '.txt'
+datafile_ext = '.tsv'
 append_hostname = False
 
 #########################################
@@ -99,3 +99,6 @@ plato_close_cmd = b'56'
 arduino_comport = 'COM6'
 baudrate = 9600
 hand_marker_setnames = ['right', 'left']
+opti_marker_count = 10
+opti_samplerate = 120
+opti_window_size = 5
