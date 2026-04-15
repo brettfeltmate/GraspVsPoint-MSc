@@ -54,5 +54,12 @@ CREATE TABLE trials (
     id integer primary key autoincrement not null,
     participant_id integer not null references participants(id),
     block_num integer not null,
-    trial_num integer not null
+    trial_num integer not null,
+    task text not null,
+    action text not null,
+    hand text not null,
+    target_loc text not null,
+    reaction_time text not null,
+    movement_time text not null,
+    reached_item text not null
 );

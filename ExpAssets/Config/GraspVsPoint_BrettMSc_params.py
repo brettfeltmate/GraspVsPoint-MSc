@@ -74,7 +74,7 @@ action_order = ['point', 'grasp']
 trials_per_practice_block = 10
 
 cm_diam = 6
-cm_brim = 1
+cm_brim = 2
 cm_placeholder_offset = 20
 cm_handstand_offset = 40
 cm_wiggle_room = 5

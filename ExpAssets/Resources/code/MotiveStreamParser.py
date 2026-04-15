@@ -1,6 +1,9 @@
-# type: ignore
 from typing import Union, Container
-from dataStructures import unlabeledMarkerStruct, labeledMarkerStruct, rigidBodyStruct
+from dataStructures import (
+    unlabeledMarkerStruct,
+    labeledMarkerStruct,
+    rigidBodyStruct,
+)
 from construct import Int32ul, CString
 
 
@@ -10,14 +13,14 @@ class MotiveStreamParser(object):
         self.__offset = 0
 
         self.__structures = {
-            "label": CString("utf8"),
-            "size": Int32ul,
-            "count": Int32ul,
-            "frame_number": Int32ul,
-            "unlabeled_marker": unlabeledMarkerStruct,
-            "legacy_marker": unlabeledMarkerStruct,
-            "labeled_marker": labeledMarkerStruct,
-            "rigid_body": rigidBodyStruct,
+            'label': CString('utf8'),
+            'size': Int32ul,
+            'count': Int32ul,
+            'frame_number': Int32ul,
+            'unlabeled_marker': unlabeledMarkerStruct,
+            'legacy_marker': unlabeledMarkerStruct,
+            'labeled_marker': labeledMarkerStruct,
+            'rigid_body': rigidBodyStruct,
         }
 
     def seek(self, by: int) -> None:
@@ -33,7 +36,7 @@ class MotiveStreamParser(object):
         struct = self.__structures[asset_type]
         contents = struct.parse(self.__stream[self.__offset :])
 
-        if asset_type == "label":
+        if asset_type == 'label':
             self.seek(len(contents) + 1)
         else:
             self.seek(struct.sizeof())

@@ -16,7 +16,7 @@ from klibs.KLBoundary import CircleBoundary, BoundarySet
 from klibs.KLExceptions import TrialException
 from klibs.KLGraphics import KLDraw as kld
 from klibs.KLGraphics import fill, blit, flip, clear
-from klibs.KLConstants import STROKE_INNER
+from klibs.KLConstants import STROKE_CENTER
 from klibs.KLUserInterface import (
     key_pressed,
     smart_sleep,
@@ -37,7 +37,7 @@ from natnetclient_rough import (  # pyright: ignore[reportMissingImports]
 
 # fills
 WHITE = (255, 255, 255, 255)
-GRUE = (90, 90, 96, 255)
+GRAY = (120, 120, 120, 255)
 RED = (255, 0, 0, 255)
 BLUE = (0, 0, 255, 255)
 GREEN = (0, 255, 0, 255)
@@ -47,7 +47,8 @@ PURP = (255, 0, 255, 255)
 LEFT = 'left'
 RIGHT = 'right'
 TARGET = 'target'
-DISTRACTOR = 'distractor'
+NONTARGET = 'nontarget'
+BOUNDARY = 'boundary'
 GBYK = 'GBYK'
 KBYG = 'KBYG'
 GO_SIGNAL = 'go_signal'
@@ -91,7 +92,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         )
 
         # plato goggles controller
-        # class defined below
+        # class defined below experiment class def
         self.goggles = PlatoGoggles(
             comport=P.arduino_comport,
             baudrate=P.baudrate,
@@ -120,35 +121,34 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             READY: (P.screen_c[0], 0),
         }
 
-        target_stroke = [self.cm_brim * self.px_cm, WHITE, STROKE_INNER]
-        nontarget_stroke = [self.cm_brim * self.px_cm, GRUE, STROKE_INNER]
-
-        self.placholders = {
-            TARGET: kld.Annulus(
+        self.stimuli = {
+            label: kld.Annulus(
                 diameter=P.cm_diam * self.px_cm,
                 thickness=self.px_cm // 5,
-                stroke=target_stroke,
-                fill=GRUE,
-            ),
-            DISTRACTOR: kld.Annulus(
-                diameter=P.cm_diam * self.px_cm,
-                thickness=self.px_cm // 5,
-                stroke=nontarget_stroke,
-                fill=GRUE,
-            ),
-            READY: kld.Annulus(
-                diameter=P.cm_diam * self.px_cm,
-                thickness=self.px_cm // 5,
-                stroke=nontarget_stroke,
-                fill=GREEN,
-            ),
-            CURSOR: kld.Annulus(
-                diameter=P.cm_diam * self.px_cm,
-                thickness=self.px_cm // 5,
-                stroke=nontarget_stroke,
-                fill=PURP,
-            ),
+                stroke=[
+                    self.cm_brim * self.px_cm,
+                    WHITE if label == TARGET else GRAY,
+                    STROKE_CENTER,
+                ],
+                fill=GREEN if label == READY else GRAY,
+            )
+            for label in (TARGET, NONTARGET, READY)
         }
+
+        # Visual aids for debugging
+        if P.development_mode:
+            self.stimuli[CURSOR] = kld.Annulus(
+                diameter=self.px_cm * 2,
+                thickness=self.px_cm // 5,
+                stroke=[self.cm_brim * self.px_cm, PURP, STROKE_CENTER],
+                fill=PURP,
+            )
+            self.stimuli[BOUNDARY] = kld.Annulus(
+                diameter=P.cm_wiggle_room * self.px_cm * 2,
+                thickness=self.px_cm // 5,
+                stroke=[self.cm_brim * self.px_cm, RED, STROKE_CENTER],
+                fill=RED,
+            )
 
         self.conditions = [
             (task, action, hand)
@@ -239,9 +239,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         instrux += '\n\nPress and hold spacebar when you are ready to begin!'
 
         fill()
-        blit(
-            self.placholders[READY], registration=5, location=self.locs[READY]
-        )
+        blit(self.stimuli[READY], registration=5, location=self.locs[READY])
         message(
             text=instrux,
             location=P.screen_c,
@@ -354,17 +352,18 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             raise TrialException(REACTION_TIMEOUT)
 
         mt_window_start = self.evm.trial_time_ms
+        mt = None
 
         self.evm.add_event(
             label=REACH_TIMEOUT,
             onset=self.evm.trial_time_ms + P.ms_window_to_reach,
         )
 
-        reach_made = False
-        reach_item = None
+        reached = False
+        reached_item = None
         mark_target = self.current[TASK] == KBYG
 
-        while not reach_made and self.evm.before(REACH_TIMEOUT):
+        while not reached and self.evm.before(REACH_TIMEOUT):
             self.present_stimuli(mark_target=mark_target)
 
             hand_pos = self.get_adj_hand_pos()
@@ -377,13 +376,13 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
 
             if mark_target:
                 if self.bounds.within_boundary(TARGET, hand_pos):
-                    reach_made = True
-                    reach_item = TARGET
-                elif self.bounds.within_boundary(DISTRACTOR, hand_pos):
-                    reach_made = True
-                    reach_item = DISTRACTOR
+                    reached = True
+                    reached_item = TARGET
+                elif self.bounds.within_boundary(NONTARGET, hand_pos):
+                    reached = True
+                    reached_item = NONTARGET
 
-        if not reach_item:
+        if not reached_item:
             self.abort_trial_premature_stoppage(reason=REACH_TIMEOUT)
             if not mark_target:
                 raise TrialException(REACH_TIMEOUT)
@@ -410,7 +409,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             'target_loc': self.target_loc,
             'reaction_time': rt if rt else NA,
             'movement_time': mt if mt else NA,
-            'reach_item': reach_item if reach_item else NA,
+            'reached_item': reached_item if reached_item is not None else NA,
         }
 
     def trial_clean_up(self):
@@ -446,10 +445,16 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
 
         if P.development_mode:
             blit(
-                self.placholders[CURSOR],
+                self.stimuli[CURSOR],
                 registration=5,
                 location=self.get_adj_hand_pos(),
             )
+            for boundary in self.bounds.boundaries:
+                blit(
+                    self.stimuli[BOUNDARY],
+                    registration=5,
+                    location=boundary.center,
+                )
 
         if prep:
             message(
@@ -457,23 +462,21 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 location=[P.screen_c[0], P.screen_c[1] // 3],  # type: ignore[unsupported-operator]
             )
             blit(
-                self.placholders[READY],
+                self.stimuli[READY],
                 registration=5,
                 location=self.locs[READY],
             )
 
-        self.placeholders[TARGET].fill = WHITE if mark_target else GRUE
-
         blit(
-            self.placholders[TARGET],
+            self.stimuli[NONTARGET],
             registration=5,
-            location=self.locs[self.target_loc],
+            location=self.locs[self.distractor_loc],
         )
 
         blit(
-            self.placholders[DISTRACTOR],
+            self.stimuli[TARGET if mark_target else NONTARGET],
             registration=5,
-            location=self.locs[self.distractor_loc],
+            location=self.locs[self.target_loc],
         )
 
         flip()
