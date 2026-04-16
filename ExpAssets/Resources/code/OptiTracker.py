@@ -196,9 +196,6 @@ class OptiTracker(object):
             )
         )
 
-    # TODO: reduce dependencies by hand-rolling a butterworth filter
-    # TODO: but first make sure this isn't a bad idea.
-
     def __smooth(
         self,
         order=2,

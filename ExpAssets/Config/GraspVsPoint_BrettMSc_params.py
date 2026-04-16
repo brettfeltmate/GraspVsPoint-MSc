@@ -6,7 +6,7 @@
 collect_demographics = True
 manual_demographics_collection = False
 manual_trial_generation = False
-run_practice_blocks = False
+run_practice_blocks = True
 multi_user = False
 view_distance = (
     57  # in centimeters, 57cm = 1 deg of visual angle per cm of screen
@@ -76,7 +76,6 @@ trials_per_practice_block = 10
 cm_diam = 6
 cm_brim = 2
 cm_placeholder_offset = 20
-cm_handstand_offset = 40
 cm_wiggle_room = 5
 cm_reach_start_threshold = (10, 15, 1)   # min, max, step
 

@@ -27,11 +27,13 @@ from klibs.KLUtilities import line_segment_len
 from klibs.KLAudio import Tone
 from klibs.KLCommunication import message
 
-# local packages defined in ExpAssets/Resources/code
-from get_key_state import get_key_state
+# defined in ExpAssets/Resources/code
 from OptiTracker import OptiTracker  # pyright: ignore[reportMissingImports]
 from natnetclient_rough import (  # pyright: ignore[reportMissingImports]
     NatNetClient,
+)
+from get_key_state import (  # pyright: ignore[reportMissingImports]
+    get_key_state,
 )
 
 
@@ -112,43 +114,37 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         self.locs = {
             LEFT: (
                 P.screen_c[0] - (P.cm_placeholder_offset * self.px_cm),
-                P.screen_c[1] // 2,
+                P.screen_c[1] // 2,  # pyright: ignore[reportOperatorIssue]
             ),
             RIGHT: (
                 P.screen_c[0] + (P.cm_placeholder_offset * self.px_cm),
-                P.screen_c[1] // 2,
+                P.screen_c[1] // 2,  # pyright: ignore[reportOperatorIssue]
             ),
             READY: (P.screen_c[0], 0),
+        }
+
+        strokes = {
+            TARGET: [P.cm_brim * self.px_cm, WHITE, STROKE_CENTER],
+            NONTARGET: [P.cm_brim * self.px_cm, GRAY, STROKE_CENTER],
+            READY: [P.cm_brim * self.px_cm, GREEN, STROKE_CENTER],
+            CURSOR: [P.cm_brim * self.px_cm, PURP, STROKE_CENTER],
+        }
+        fills = {
+            TARGET: WHITE,
+            NONTARGET: GRAY,
+            READY: GREEN,
+            CURSOR: PURP,
         }
 
         self.stimuli = {
             label: kld.Annulus(
                 diameter=P.cm_diam * self.px_cm,
                 thickness=self.px_cm // 5,
-                stroke=[
-                    P.cm_brim * self.px_cm,
-                    WHITE if label == TARGET else GRAY,
-                    STROKE_CENTER,
-                ],
-                fill=GREEN if label == READY else GRAY,
+                stroke=strokes[label],
+                fill=fills[label],
             )
-            for label in (TARGET, NONTARGET, READY)
+            for label in (TARGET, NONTARGET, READY, CURSOR)
         }
-
-        # Visual aids for debugging
-        if P.development_mode:
-            self.stimuli[CURSOR] = kld.Annulus(
-                diameter=self.px_cm * 2,
-                thickness=self.px_cm // 5,
-                stroke=[P.cm_brim * self.px_cm, PURP, STROKE_CENTER],
-                fill=PURP,
-            )
-            self.stimuli[BOUNDARY] = kld.Annulus(
-                diameter=P.cm_wiggle_room * self.px_cm * 2,
-                thickness=self.px_cm // 5,
-                stroke=[P.cm_brim * self.px_cm, RED, STROKE_CENTER],
-                fill=RED,
-            )
 
         self.conditions = [
             (task, action, hand)
@@ -179,7 +175,9 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             )
 
         # for storing mocap data during trial
-        self.participant_dir = os.path.join(P.opti_data_dir, f'P{P.participant_id}')
+        self.participant_dir = os.path.join(
+            P.opti_data_dir, f'P{P.participant_id}'
+        )
         os.makedirs(self.participant_dir, exist_ok=True)
 
         self.testing_dir = os.path.join(self.participant_dir, TESTING)
@@ -198,37 +196,30 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             HAND: self.conditions[P.block_number - 1][2],
         }
 
- 
-
-        self.bounds = BoundarySet([
+        self.bounds = BoundarySet(
+            [
                 CircleBoundary(
                     label=READY,
                     center=self.locs[READY],
                     radius=P.cm_wiggle_room * self.px_cm,
                 )
-        ])
+            ]
+        )
 
-        instrux = f'In this block, you will be asked to {self.current[ACTION]} at a target item with your {self.current[HAND]} hand.\n'
+        instrux = f'({PRACTICE if P.run_practice_blocks else TESTING}) Block {P.block_number} of {P.num_blocks}\n\n'
 
-        instrux += '\nTrials will begin with the goggles opening. Then a tone will be played, try to begin reaching as soon as you hear it!.\n'
+        instrux += f'Task: {self.current[TASK]}\nAction: {self.current[ACTION]}\nHand: {self.current[HAND]}\n\n'
 
-        if self.current[TASK] == GBYK:
-            instrux += '\nWhich item is your target will be revealed after you start reaching, indicated by a white ring underneath it.\n'
-        else:
-            instrux += '\nYour target will be indicated at the start, by a white ring underneath it.\n'
-
-        instrux += '\nIf you pause or hesistate mid-reach, the trial will be aborted, so try to complete your reach in one smooth motion!\n'
-
-        instrux += '\nAt the end you will be instructed to press and HOLD spacebar until the next trial begins. The goggles will close once you do.\n'
-
-        instrux += '\n\nPress and hold spacebar when you are ready to begin!'
+        instrux += 'Press and hold spacebar when ready!'
 
         fill()
         blit(self.stimuli[READY], registration=5, location=self.locs[READY])
         message(
             text=instrux,
             location=P.screen_c,
-            wrap_width=int(P.screen_x * 0.6),  # pyright: ignore[reportOperatorIssue]
+            wrap_width=int(
+                P.screen_x * 0.6  # pyright: ignore[reportOperatorIssue]
+            ),
         )
         flip()
 
@@ -252,7 +243,8 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             else P.cm_wiggle_room * self.px_cm * 2
         )
 
-        self.bounds = BoundarySet([
+        self.bounds = BoundarySet(
+            [
                 CircleBoundary(
                     label=TARGET if self.target_loc == LEFT else NONTARGET,
                     center=[self.locs[LEFT][0], self.locs[LEFT][1] + y_offset],
@@ -270,8 +262,9 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                     label=READY,
                     center=self.locs[READY],
                     radius=P.cm_wiggle_room * self.px_cm,
-                )
-        ])
+                ),
+            ]
+        )
         # distance at which target is revealed (GBYK)
         self.reach_threshold = (
             randrange(*P.cm_reach_start_threshold) * self.px_cm
@@ -330,8 +323,6 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 participant_ready = key_pressed(key=SPACE)
 
         self.present_stimuli(mark_target=self.current[TASK] == KBYG)
-
-
 
     def trial(self):
         self.goggles.open()
@@ -462,17 +453,10 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 registration=5,
                 location=self.get_adj_hand_pos(),
             )
-            # for boundary in self.boundaries:
-            #     if boundary.label != CURSOR:
-            #         blit(
-            #             self.stimuli[BOUNDARY],
-            #             registration=5,
-            #             location=self.bounds[boundary.label].center,
-            #         )
 
         if prep:
             message(
-                'Press READY to start. Ensure spacebar is held down.',
+                'Ensure spacebar is held, then tap READY',
                 location=[P.screen_c[0], P.screen_c[1] // 3],  # type: ignore[unsupported-operator]
             )
             blit(
