@@ -42,8 +42,8 @@ saccadic_motion_threshold = 0.15
 # Experiment Structure
 #########################################
 multi_session_project = False
-trials_per_block = 40
-blocks_per_experiment = 6
+trials_per_block = 30
+blocks_per_experiment = 8
 conditions = []
 default_condition = None
 
@@ -76,12 +76,12 @@ trials_per_practice_block = 10
 cm_diam = 6
 cm_brim = 2
 cm_placeholder_offset = 20
-cm_wiggle_room = 5
+cm_wiggle_room = 10
 cm_reach_start_threshold = (10, 15, 1)   # min, max, step
 
 ms_go_signal_onset_interval = (100, 1600, 200)  # min, max, step
 ms_window_to_react = 500
-ms_window_to_reach = 500
+ms_window_to_reach = 650
 ms_post_reach_window = 500
 
 # audio

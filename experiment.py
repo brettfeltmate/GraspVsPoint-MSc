@@ -22,6 +22,7 @@ from klibs.KLUserInterface import (
     mouse_pos,
     pump,
     ui_request,
+    any_key
 )
 from klibs.KLUtilities import line_segment_len
 from klibs.KLAudio import Tone
@@ -51,8 +52,8 @@ RIGHT = 'right'
 TARGET = 'target'
 NONTARGET = 'nontarget'
 BOUNDARY = 'boundary'
-GBYK = 'GBYK'
-KBYG = 'KBYG'
+GBYK = 'gbyk'
+KBYG = 'kbyg'
 GO_SIGNAL = 'go_signal'
 REACTION_TIMEOUT = 'reaction_timeout'
 REACH_TIMEOUT = 'reach_timeout'
@@ -160,19 +161,14 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             PREMATURE_STOP: 'Try not to pause or hesistate mid-reach!',
         }
 
-        if P.run_practice_blocks:
+        # repeat first block for practice
+        if P.run_practice_blocks and not P.development_mode:
             self.insert_practice_block(
-                block_nums=[1, 4],
+                block_nums=[1],
                 trial_counts=P.trials_per_practice_block,
             )
 
-            # repeat first GBYK and KBYG condition for practice
-            self.conditions = (
-                [self.conditions[0]]
-                + [self.conditions[:4]]
-                + [self.conditions[3]]
-                + [self.conditions[4:]]
-            )
+            self.conditions.insert(0, self.conditions[0])
 
         # for storing mocap data during trial
         self.participant_dir = os.path.join(
@@ -189,8 +185,9 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
     def block(self):
         # ensure isn't in ready area
         mouse_pos(position=[0, 0])
+        self.goggles.open()
 
-        self.current = {
+        self.condition = {
             TASK: self.conditions[P.block_number - 1][0],
             ACTION: self.conditions[P.block_number - 1][1],
             HAND: self.conditions[P.block_number - 1][2],
@@ -201,14 +198,17 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 CircleBoundary(
                     label=READY,
                     center=self.locs[READY],
-                    radius=P.cm_wiggle_room * self.px_cm,
+                    radius=P.cm_wiggle_room * self.px_cm // 2,
                 )
             ]
         )
 
-        instrux = f'({PRACTICE if P.run_practice_blocks else TESTING}) Block {P.block_number} of {P.num_blocks}\n\n'
+        instrux = f'({PRACTICE if P.run_practice_blocks else TESTING}) Block {P.block_number} of {P.blocks_per_experiment}\n\n'
 
-        instrux += f'Task: {self.current[TASK]}\nAction: {self.current[ACTION]}\nHand: {self.current[HAND]}\n\n'
+        instrux += f'Task: {self.condition[TASK]}\nAction: {self.condition[ACTION]}\nHand: {self.condition[HAND]}\n\n'
+
+        if self.condition[HAND] != self.conditions[P.block_number - 2][2] and P.block_number != 1:
+            instrux += 'SWAP MARKERS!\n\n'
 
         instrux += 'Press and hold spacebar when ready!'
 
@@ -232,22 +232,27 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             ):
                 break
 
+        self.goggles.close()
+
     def trial_prep(self):
         # same
         mouse_pos(position=[0, 0])
 
+        y_offset = 0
+
         # because where the hand ends differs between pointing and grasping
-        y_offset = (
-            0
-            if self.current[ACTION] == GRASP
-            else P.cm_wiggle_room * self.px_cm * 2
-        )
+        # and markers being placed atop hand, skewing it when perpendicular to screen
+        if self.condition[ACTION] == POINT:
+            y_offset = P.cm_wiggle_room * self.px_cm
 
         self.bounds = BoundarySet(
             [
                 CircleBoundary(
                     label=TARGET if self.target_loc == LEFT else NONTARGET,
-                    center=[self.locs[LEFT][0], self.locs[LEFT][1] + y_offset],
+                    center=[
+                        self.locs[LEFT][0],
+                        self.locs[LEFT][1] + y_offset
+                        ],
                     radius=P.cm_wiggle_room * self.px_cm,
                 ),
                 CircleBoundary(
@@ -265,6 +270,20 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 ),
             ]
         )
+
+        # ring = kld.Annulus(
+        #         diameter=P.cm_wiggle_room * self.px_cm,
+        #         thickness=self.px_cm // 5,
+        #         stroke=[self.px_cm, GREEN, STROKE_CENTER],
+        #         fill=GREEN,
+        # )
+
+        # fill()
+        # blit(ring, location = [ self.locs[LEFT][0], self.locs[LEFT][1] + y_offset ], registration = 5)
+        # blit(ring, location = [ self.locs[RIGHT][0], self.locs[RIGHT][1] + y_offset ], registration = 5)
+        # flip()
+        # any_key()
+        # quit()
         # distance at which target is revealed (GBYK)
         self.reach_threshold = (
             randrange(*P.cm_reach_start_threshold) * self.px_cm
@@ -289,9 +308,9 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         # Construct trial filename with current parameters
         trial_file = (
             f'Block_{P.block_number}_'
-            f'Task_{self.current[TASK]}_'
-            f'Hand_{self.current[HAND]}_'
-            f'Action_{self.current[ACTION]}_'
+            f'Task_{self.condition[TASK]}_'
+            f'Hand_{self.condition[HAND]}_'
+            f'Action_{self.condition[ACTION]}_'
             f'Trial_{P.trial_number}_'
             f'TargetLoc_{self.target_loc}.csv'
         )
@@ -322,7 +341,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             if not participant_ready:
                 participant_ready = key_pressed(key=SPACE)
 
-        self.present_stimuli(mark_target=self.current[TASK] == KBYG)
+        self.present_stimuli(mark_target=self.condition[TASK] == KBYG)
 
     def trial(self):
         self.goggles.open()
@@ -365,20 +384,20 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
 
         reached = False
         reached_item = None
-        mark_target = self.current[TASK] == KBYG
+        visible_target = self.condition[TASK] == KBYG
 
         while not reached and self.evm.before(REACH_TIMEOUT):
-            self.present_stimuli(mark_target=mark_target)
+            self.present_stimuli(mark_target=visible_target)
 
             hand_pos = self.get_adj_hand_pos()
 
-            if not mark_target:
-                mark_target = (
+            if not visible_target:
+                visible_target = (
                     line_segment_len(starting_pos, hand_pos)
                     > self.reach_threshold
                 )
 
-            if mark_target:
+            if visible_target:
                 if self.bounds.within_boundary(TARGET, hand_pos):
                     reached = True
                     reached_item = TARGET
@@ -388,7 +407,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
 
         if not reached_item:
             self.abort_trial_premature_stoppage(reason=REACH_TIMEOUT)
-            if not mark_target:
+            if not visible_target:
                 raise TrialException(REACH_TIMEOUT)
         else:
             mt = self.evm.trial_time_ms - mt_window_start
@@ -407,9 +426,9 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         return {
             'block_num': P.block_number,
             'trial_num': P.trial_number,
-            'task': self.current[TASK],
-            'action': self.current[ACTION],
-            'hand': self.current[HAND],
+            'task': self.condition[TASK],
+            'action': self.condition[ACTION],
+            'hand': self.condition[HAND],
             'target_loc': self.target_loc,
             'reaction_time': rt if rt else NA,
             'movement_time': mt if mt else NA,
@@ -424,7 +443,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         while True:
             q = pump(True)
             ui_request(queue=q)
-            if key_pressed(key=SPACE):
+            if key_pressed(queue=q, key=SPACE):
                 break
 
         self.goggles.close()
@@ -498,7 +517,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 Expected format: {'markers': [{'key1': val1, ...}, ...]}
         """
 
-        if marker_set.get('label') == self.current[HAND]:
+        if marker_set.get('label') == self.condition[HAND]:
             # Append data to trial-specific CSV file
             fname = self.ot.data_dir
             header = list(marker_set['markers'][0].keys())
