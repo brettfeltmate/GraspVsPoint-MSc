@@ -17,6 +17,7 @@ from klibs.KLGraphics import KLDraw as kld
 from klibs.KLGraphics import fill, blit, flip, clear
 from klibs.KLConstants import STROKE_CENTER
 from klibs.KLUserInterface import (
+    any_key,
     key_pressed,
     smart_sleep,
     mouse_pos,
@@ -144,8 +145,23 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 stroke=strokes[label],
                 fill=fills[label],
             )
-            for label in (TARGET, NONTARGET, READY, CURSOR)
+            for label in (TARGET, NONTARGET, READY)
         }
+
+        # Visual aids for debugging
+        if P.development_mode:
+            self.stimuli[CURSOR] = kld.Annulus(
+                diameter=self.px_cm * 2,
+                thickness=self.px_cm // 5,
+                stroke=strokes[CURSOR],
+                fill=fills[CURSOR],
+            )
+            self.stimuli[BOUNDARY] = kld.Annulus(
+                diameter=P.cm_wiggle_room * self.px_cm * 2,
+                thickness=self.px_cm // 5,
+                stroke=[P.cm_brim * self.px_cm, RED, STROKE_CENTER],
+                fill=RED,
+            )
 
         self.conditions = [
             (task, action, hand)
@@ -174,6 +190,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         self.participant_dir = os.path.join(
             P.opti_data_dir, f'P{P.participant_id}'
         )
+
         os.makedirs(self.participant_dir, exist_ok=True)
 
         self.testing_dir = os.path.join(self.participant_dir, TESTING)
@@ -449,7 +466,11 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         self.goggles.close()
 
     def clean_up(self):
-        pass
+        clear()
+        message('Experiment complete, thank you!', location=P.screen_c)
+        flip()
+
+        any_key()
 
     def abort_trial_premature_stoppage(self, reason: str):
         self.nnc.shutdown()  # stop marker tracking
