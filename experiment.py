@@ -17,13 +17,12 @@ from klibs.KLGraphics import KLDraw as kld
 from klibs.KLGraphics import fill, blit, flip, clear
 from klibs.KLConstants import STROKE_CENTER
 from klibs.KLUserInterface import (
-    any_key,
     key_pressed,
     smart_sleep,
     mouse_pos,
     pump,
     ui_request,
-    any_key
+    any_key,
 )
 from klibs.KLUtilities import line_segment_len
 from klibs.KLAudio import Tone
@@ -220,14 +219,30 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             ]
         )
 
-        instrux = f'({PRACTICE if P.run_practice_blocks else TESTING}) Block {P.block_number} of {P.blocks_per_experiment}\n\n'
+        if (
+            self.condition[HAND] != self.conditions[P.block_number - 2][2]
+            and P.block_number != 1
+        ):
+            fill()
+            message(
+                'Swap markers!\nPress enter when done.',
+                location=P.screen_c,
+            )
+            flip()
+            any_key()
 
-        instrux += f'Task: {self.condition[TASK]}\nAction: {self.condition[ACTION]}\nHand: {self.condition[HAND]}\n\n'
+        instrux = (
+            f'{PRACTICE if P.run_practice_blocks else TESTING}) Block {P.block_number}/{P.blocks_per_experiment}\n\n'
+            f'"{"Know Before You Go" if self.condition[TASK] == KBYG else "Go Before You Know"}"\n\n'
+            f'Use your {self.condition[HAND]} to reach toward and {self.condition[ACTION]} at the target object,\n'
+            f'indicated by a white ring appearing {"AFTER" if self.condition[TASK] == GBYK else "BEFORE"} you start reaching.\n\n'
+        )
 
-        if self.condition[HAND] != self.conditions[P.block_number - 2][2] and P.block_number != 1:
-            instrux += 'SWAP MARKERS!\n\n'
-
-        instrux += 'Press and hold spacebar when ready!'
+        instrux += (
+            'The experimentor will explain the task in more depth.\n'
+            f'When ready, press and HOLD spacebar with your {self.condition[HAND]} hand in a handshake position.\n'
+            'NOTE: This will trigger the goggles to close, blocking your vision temporarily.'
+        )
 
         fill()
         blit(self.stimuli[READY], registration=5, location=self.locs[READY])
@@ -266,10 +281,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             [
                 CircleBoundary(
                     label=TARGET if self.target_loc == LEFT else NONTARGET,
-                    center=[
-                        self.locs[LEFT][0],
-                        self.locs[LEFT][1] + y_offset
-                        ],
+                    center=[self.locs[LEFT][0], self.locs[LEFT][1] + y_offset],
                     radius=P.cm_wiggle_room * self.px_cm,
                 ),
                 CircleBoundary(
@@ -288,34 +300,19 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             ]
         )
 
-        # ring = kld.Annulus(
-        #         diameter=P.cm_wiggle_room * self.px_cm,
-        #         thickness=self.px_cm // 5,
-        #         stroke=[self.px_cm, GREEN, STROKE_CENTER],
-        #         fill=GREEN,
-        # )
-
-        # fill()
-        # blit(ring, location = [ self.locs[LEFT][0], self.locs[LEFT][1] + y_offset ], registration = 5)
-        # blit(ring, location = [ self.locs[RIGHT][0], self.locs[RIGHT][1] + y_offset ], registration = 5)
-        # flip()
-        # any_key()
-        # quit()
         # distance at which target is revealed (GBYK)
         self.reach_threshold = (
             randrange(*P.cm_reach_start_threshold) * self.px_cm
         )
 
-        # the timing of these events are deterministic
-        # remaining events are relative and set during trial()
         self.evm.add_event(
             label=GO_SIGNAL,
             onset=randrange(*P.ms_go_signal_onset_interval),
         )
 
         self.evm.add_event(
-            label=REACTION_TIMEOUT,
-            onset=P.ms_window_to_react,
+            label=REACH_TIMEOUT,
+            onset=P.ms_response_window,
             after=GO_SIGNAL,
         )
 
@@ -324,22 +321,18 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
 
         # Construct trial filename with current parameters
         trial_file = (
+            f'P_{P.participant_id}_'
             f'Block_{P.block_number}_'
+            f'Trial_{P.trial_number}_'
             f'Task_{self.condition[TASK]}_'
             f'Hand_{self.condition[HAND]}_'
             f'Action_{self.condition[ACTION]}_'
-            f'Trial_{P.trial_number}_'
-            f'TargetLoc_{self.target_loc}.csv'
+            f'Target_{self.target_loc}.csv'
         )
 
         # Set data directory for this trial
         data_dir = self.practice_dir if P.practicing else self.testing_dir
         self.ot.data_dir = os.path.join(data_dir, trial_file)
-
-        self.nnc.startup()  # start marker tracking
-
-        # ensure some data exists before beginning trial
-        smart_sleep(P.opti_trial_lead_time)
 
         # blind participant during prop setup
         self.goggles.close()
@@ -371,39 +364,35 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
                 self.abort_trial_premature_stoppage(reason=PREMATURE_REACH)
                 raise TrialException(PREMATURE_REACH)
 
-        self.go_signal.play()
-        rt_window_start = self.evm.trial_time_ms
-        rt = None
+        self.nnc.startup()  # start marker tracking
 
-        self.evm.add_event(
-            label=REACTION_TIMEOUT,
-            onset=self.evm.trial_time_ms + P.ms_window_to_react,
-        )
+        smart_sleep(P.opti_lead_time)
+
+        self.go_signal.play()
+
+        starting_pos = self.get_adj_hand_pos()
+
+        rt = None
+        rt_clock_start = self.evm.trial_time_ms
 
         started_reach = False
 
-        while self.evm.before(REACTION_TIMEOUT) and not started_reach:
+        while self.evm.before(REACH_TIMEOUT) and not started_reach:
             if get_key_state(SPACE) == 0:
                 started_reach = True
-                rt = self.evm.trial_time_ms - rt_window_start
+                rt = self.evm.trial_time_ms - rt_clock_start
 
         if not started_reach:
-            self.abort_trial_premature_stoppage(reason=REACTION_TIMEOUT)
-            raise TrialException(REACTION_TIMEOUT)
+            self.abort_trial_premature_stoppage(reason=REACH_TIMEOUT)
+            raise TrialException(REACH_TIMEOUT)
 
-        mt_window_start = self.evm.trial_time_ms
         mt = None
+        mt_clock_start = self.evm.trial_time_ms
 
-        self.evm.add_event(
-            label=REACH_TIMEOUT,
-            onset=self.evm.trial_time_ms + P.ms_window_to_reach,
-        )
-
-        reached = False
         reached_item = None
         visible_target = self.condition[TASK] == KBYG
 
-        while not reached and self.evm.before(REACH_TIMEOUT):
+        while reached_item is None and self.evm.before(REACH_TIMEOUT):
             self.present_stimuli(mark_target=visible_target)
 
             hand_pos = self.get_adj_hand_pos()
@@ -416,27 +405,20 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
 
             if visible_target:
                 if self.bounds.within_boundary(TARGET, hand_pos):
-                    reached = True
                     reached_item = TARGET
                 elif self.bounds.within_boundary(NONTARGET, hand_pos):
-                    reached = True
                     reached_item = NONTARGET
+                else:
+                    continue
 
-        if not reached_item:
+        if reached_item:
+            mt = self.evm.trial_time_ms - mt_clock_start
+        else:
             self.abort_trial_premature_stoppage(reason=REACH_TIMEOUT)
             if not visible_target:
                 raise TrialException(REACH_TIMEOUT)
-        else:
-            mt = self.evm.trial_time_ms - mt_window_start
 
-        self.evm.add_event(
-            label=TRIAL_TIMEOUT,
-            onset=self.evm.trial_time_ms + P.ms_post_reach_window,
-        )
-
-        while self.evm.before(TRIAL_TIMEOUT):
-            q = pump(True)
-            ui_request(queue=q)
+        smart_sleep(P.ms_inter_trial_interval)
 
         self.nnc.shutdown()  # stop marker tracking
 
@@ -453,6 +435,8 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         }
 
     def trial_clean_up(self):
+        mouse_pos(position=[0, 0])
+
         clear()
         message('Press and hold spacebar', location=P.screen_c)
         flip()
@@ -495,10 +479,6 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             )
 
         if prep:
-            message(
-                'Ensure spacebar is held, then tap READY',
-                location=[P.screen_c[0], P.screen_c[1] // 3],  # type: ignore[unsupported-operator]
-            )
             blit(
                 self.stimuli[READY],
                 registration=5,
@@ -520,6 +500,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         flip()
 
     def get_adj_hand_pos(self):
+        # Get position in pixels
         markers = self.ot.position()
         hand_pos = {
             axis: markers[axis][0].item() * self.px_cm
@@ -528,15 +509,11 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
         return self.translate_pos(hand_pos)
 
     def translate_pos(self, pos):
+        # Optitrack's z-axis is screen's y-axis
         return (P.screen_x - pos[POS_X], P.screen_y - pos[POS_Z])
 
     def marker_set_listener(self, marker_set: dict) -> None:
-        """Write marker set data to CSV file.
-
-        Args:
-            marker_set (dict): Dictionary containing marker data to be written.
-                Expected format: {'markers': [{'key1': val1, ...}, ...]}
-        """
+        # Write marker set data to CSV file.
 
         if marker_set.get('label') == self.condition[HAND]:
             # Append data to trial-specific CSV file

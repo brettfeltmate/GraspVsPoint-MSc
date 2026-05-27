@@ -79,10 +79,14 @@ cm_placeholder_offset = 20
 cm_wiggle_room = 10
 cm_reach_start_threshold = (10, 15, 1)   # min, max, step
 
-ms_go_signal_onset_interval = (100, 1600, 200)  # min, max, step
-ms_window_to_react = 500
-ms_window_to_reach = 650
-ms_post_reach_window = 500
+ms_opti_lead_time = 100   # ms
+ms_go_signal_onset_interval = (
+    400,
+    2000,
+    100,
+)  # opti_lead_time follows after, so effectively 500->2000
+ms_response_window = 1000
+ms_inter_trial_interval = 500
 
 # audio
 tone_duration = 100
@@ -91,7 +95,6 @@ tone_freq = 784  # ridin' on yo G5 airplane
 tone_volume = 1.0
 
 opti_data_dir = 'OptiData'
-opti_trial_lead_time = 60   # ms
 
 plato_open_cmd = b'55'
 plato_close_cmd = b'56'
