@@ -17,13 +17,12 @@ from klibs.KLGraphics import KLDraw as kld
 from klibs.KLGraphics import fill, blit, flip, clear
 from klibs.KLConstants import STROKE_CENTER
 from klibs.KLUserInterface import (
-    any_key,
     key_pressed,
     smart_sleep,
     mouse_pos,
     pump,
     ui_request,
-    any_key
+    any_key,
 )
 from klibs.KLUtilities import line_segment_len
 from klibs.KLAudio import Tone
@@ -41,7 +40,7 @@ from get_key_state import (  # pyright: ignore[reportMissingImports]
 
 # fills
 WHITE = (255, 255, 255, 255)
-GRAY = (120, 120, 120, 255)
+GRAY = (90, 90, 90, 255)
 RED = (255, 0, 0, 255)
 BLUE = (0, 0, 255, 255)
 GREEN = (0, 255, 0, 255)
@@ -224,7 +223,10 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
 
         instrux += f'Task: {self.condition[TASK]}\nAction: {self.condition[ACTION]}\nHand: {self.condition[HAND]}\n\n'
 
-        if self.condition[HAND] != self.conditions[P.block_number - 2][2] and P.block_number != 1:
+        if (
+            self.condition[HAND] != self.conditions[P.block_number - 2][2]
+            and P.block_number != 1
+        ):
             instrux += 'SWAP MARKERS!\n\n'
 
         instrux += 'Press and hold spacebar when ready!'
@@ -266,10 +268,7 @@ class GraspVsPoint_BrettMSc(klibs.Experiment):
             [
                 CircleBoundary(
                     label=TARGET if self.target_loc == LEFT else NONTARGET,
-                    center=[
-                        self.locs[LEFT][0],
-                        self.locs[LEFT][1] + y_offset
-                        ],
+                    center=[self.locs[LEFT][0], self.locs[LEFT][1] + y_offset],
                     radius=P.cm_wiggle_room * self.px_cm,
                 ),
                 CircleBoundary(
