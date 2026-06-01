@@ -71,7 +71,7 @@ append_hostname = False
 task_order = ['gbyk', 'kbyg']
 hand_order = ['right', 'left']
 action_order = ['point', 'grasp']
-trials_per_practice_block = 10
+trials_per_practice_block = 30
 
 cm_diam = 6
 cm_brim = 2
@@ -81,7 +81,7 @@ cm_reach_start_threshold = (10, 15, 1)   # min, max, step
 
 ms_go_signal_onset_interval = (100, 1100, 200)  # min, max, step
 ms_window_to_react = 1000
-ms_window_to_reach = 650
+ms_window_to_reach = 500
 ms_post_reach_window = 500
 
 # audio
