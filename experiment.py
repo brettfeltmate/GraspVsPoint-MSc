@@ -40,7 +40,7 @@ from get_key_state import (  # pyright: ignore[reportMissingImports]
 
 # fills
 WHITE = (255, 255, 255, 255)
-GRAY = (90, 90, 90, 255)
+GRAY = (60, 60, 60, 255)
 RED = (255, 0, 0, 255)
 BLUE = (0, 0, 255, 255)
 GREEN = (0, 255, 0, 255)
